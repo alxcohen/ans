@@ -1,0 +1,66 @@
+---
+- name: Установка Docker на Oracle Linux 9
+  hosts: [{{docker_ol9_intall}}]
+  become: yes
+
+  tasks:
+    - name: Установка необходимых пакетов
+      yum:
+        name:
+          - yum-utils
+          - device-mapper-persistent-data
+          - lvm2
+        state: present
+
+    - name: Добавление Docker-репозитория
+      yum_repository:
+        name: docker-ce
+        description: Docker CE Stable - $basearch
+        baseurl: https://download.docker.com/linux/centos/7/$basearch/stable
+        gpgcheck: yes
+        gpgkey: https://download.docker.com/linux/centos/gpg
+        enabled: yes
+
+    - name: Обновление репозиториев
+      command: yum update -y
+
+    - name: Установка Docker
+      yum:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    - name: Проверка наличия systemd unit файла Docker
+      stat:
+        path: /etc/systemd/system/multi-user.target.wants/docker.service
+      register: docker_service_file
+
+    - name: Добавление переменных окружения в Docker systemd unit
+      lineinfile:
+        path: /etc/systemd/system/multi-user.target.wants/docker.service
+        insertafter: 'Restart=always'
+        line: 'Environment="HTTP_PROXY=http://{{ proxy_address }}"'
+      when: docker_service_file.stat.exists
+
+    - name: Добавление HTTPS_PROXY в Docker systemd unit
+      lineinfile:
+        path: /etc/systemd/system/multi-user.target.wants/docker.service
+        insertafter: 'Environment="HTTP_PROXY=http://{{ proxy_address }}"'
+        line: 'Environment="HTTPS_PROXY=http://{{ proxy_address }}"'
+      when: docker_service_file.stat.exists
+
+    - name: Daemon-reload systemd
+      systemd:
+        daemon_reload: yes
+
+#  handlers:
+#    - name: Reload Docker Service
+#      systemd:
+#        name: docker
+#        state: restarted
+    - name: Ручной перезапуск, тот что выше, эффекта нужного не дает )
+      command: systemctl restart docker
